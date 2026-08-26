@@ -932,6 +932,105 @@
 
     .tbtn:active {
       background: rgba(255, 107, 53, .55);
+      border-color: var(--accent);
+    }
+
+    /* default (desktop / tablet) placement — kept in CSS, not inline,
+       so the small-screen rules below can actually override it */
+    #tLeft  { left: 24px;  bottom: 34px; }
+    #tRight { left: 118px; bottom: 34px; }
+    #tGas   { right: 24px; bottom: 120px; }
+    #tBrake { right: 24px; bottom: 34px; }
+    #tCam   { right: 118px; bottom: 34px; font-size: 14px; }
+
+    /* ---------- small screens / phones ----------
+       The speedo panel is 214px wide and sat bottom-right, directly under the
+       gas, brake and CAM buttons. On small screens the readouts move to the
+       top corners and the whole bottom strip belongs to the thumbs. */
+    @media (max-width: 860px), (max-height: 540px) {
+      #speedo {
+        top: 10px;
+        right: 10px;
+        bottom: auto;
+        width: 152px;
+        padding: 8px 10px 10px;
+        border-radius: 12px;
+      }
+
+      #gauge { width: 124px; }
+      #spd { font-size: 28px; }
+      #spdU { font-size: 8px; letter-spacing: .16em; }
+      #gearRow div { font-size: 9.5px; min-width: 19px; padding: 2px 0; }
+      .bars { margin-top: 8px; gap: 4px; }
+      .brow .bl { font-size: 8px; width: 19px; }
+
+      /* heading is a luxury on a small screen; the panels are not */
+      #compass { display: none; }
+
+      #topleft {
+        left: 10px;
+        top: 10px;
+        min-width: 0;
+        padding: 8px 11px 10px;
+        font-size: 11px;
+        line-height: 1.6;
+        border-radius: 12px;
+      }
+
+      #topleft .ptitle { font-size: 8.5px; padding-bottom: 5px; margin-bottom: 4px; }
+      #topleft .r { gap: 10px; }
+      .chip { font-size: 9px; padding: 1px 7px; }
+
+      #notice { top: 10px; font-size: 11px; padding: 7px 14px; }
+      #tip {
+        bottom: 116px;
+        font-size: 10.5px;
+        padding: 8px 14px;
+        max-width: 78vw;
+      }
+
+      #warn { font-size: 13px; padding: 12px 20px; max-width: 82vw; text-align: center; }
+
+      .tbtn { width: 66px; height: 66px; font-size: 18px; }
+      #tLeft  { left: 18px;  bottom: 18px; }
+      #tRight { left: 96px;  bottom: 18px; }
+      #tGas   { right: 18px; bottom: 96px; }
+      #tBrake { right: 18px; bottom: 18px; }
+      #tCam   { right: 96px; bottom: 18px; font-size: 12px; }
+    }
+
+    /* ---------- portrait guard ---------- */
+    #rotate { display: none; }
+
+    @media (max-width: 860px) and (orientation: portrait) {
+      body.playing #rotate {
+        display: flex;
+        position: fixed;
+        inset: 0;
+        z-index: 55;
+        align-items: center;
+        justify-content: center;
+        padding: 32px;
+        text-align: center;
+        background: rgba(8, 5, 4, .93);
+        backdrop-filter: blur(8px);
+      }
+
+      #rotate .ricon {
+        display: block;
+        font-size: 46px;
+        color: var(--accent);
+        margin-bottom: 14px;
+        animation: rotHint 2.2s ease-in-out infinite;
+      }
+
+      #rotate b { display: block; font-size: 19px; margin-bottom: 7px; }
+      #rotate p { color: var(--muted); font-size: 13.5px; margin: 0; }
+
+      @keyframes rotHint {
+        0%, 100% { transform: rotate(0deg); }
+        50% { transform: rotate(90deg); }
+      }
     }
 
     #err {
@@ -1127,11 +1226,19 @@
   </div>
 
   <div id="touch" class="hidden">
-    <div class="tbtn" id="tLeft" style="left:24px;bottom:34px;">◀</div>
-    <div class="tbtn" id="tRight" style="left:118px;bottom:34px;">▶</div>
-    <div class="tbtn" id="tGas" style="right:24px;bottom:120px;">▲</div>
-    <div class="tbtn" id="tBrake" style="right:24px;bottom:34px;">▼</div>
-    <div class="tbtn" id="tCam" style="right:118px;bottom:34px;font-size:14px;">CAM</div>
+    <div class="tbtn" id="tLeft">◀</div>
+    <div class="tbtn" id="tRight">▶</div>
+    <div class="tbtn" id="tGas">▲</div>
+    <div class="tbtn" id="tBrake">▼</div>
+    <div class="tbtn" id="tCam">CAM</div>
+  </div>
+
+  <div id="rotate">
+    <div>
+      <span class="ricon">⟳</span>
+      <b>Rotate your device</b>
+      <p>This simulator is built for landscape.</p>
+    </div>
   </div>
 
   <div id="pause" class="hidden">
@@ -3984,6 +4091,19 @@
     });
     let selectedQuality = 'high', built = false;
 
+    // Touch devices default to Low — a phone GPU will not survive 900 trees,
+    // a 4096px shadow map and 2x pixel ratio. Still fully overridable.
+    const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+    if (isTouch) {
+      document.body.classList.add('is-touch');
+      const lowBtn = document.querySelector('#qseg button[data-q="low"]');
+      if (lowBtn) {
+        document.querySelectorAll('#qseg button').forEach(x => x.classList.remove('on'));
+        lowBtn.classList.add('on');
+        selectedQuality = 'low';
+      }
+    }
+
     document.querySelectorAll('#tseg button').forEach(b => {
       b.addEventListener('click', () => {
         document.querySelectorAll('#tseg button').forEach(x => x.classList.remove('on'));
@@ -4061,10 +4181,12 @@
       }
 
       started = true;
+      document.body.classList.add('playing');
       const s = document.getElementById('start');
       s.style.opacity = '0';
       setTimeout(() => s.classList.add('hidden'), 820);
       el.hud.classList.add('on');
+      if (isTouch) el.tip.innerHTML = '<b>▲</b> drive · <b>◀ ▶</b> steer · <b>CAM</b> camera · drag to look';
       el.tip.classList.add('show');
       setTimeout(() => el.tip.classList.remove('show'), 8000);
       notify('Chase camera');

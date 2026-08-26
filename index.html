@@ -943,6 +943,37 @@
     #tBrake { right: 24px; bottom: 34px; }
     #tCam   { right: 118px; bottom: 34px; font-size: 14px; }
 
+    /* Recovery sits centre-bottom: far from the steering and pedal thumbs so
+       it cannot be hit by accident, but obvious the moment you need it. */
+    #tReset {
+      left: 50%;
+      bottom: 34px;
+      transform: translateX(-50%);
+      font-size: 26px;
+      opacity: .42;
+      transition: opacity .3s ease, background .3s ease, border-color .3s ease;
+    }
+
+    #tReset:active { transform: translateX(-50%); }
+
+    /* off the trail or on your roof — light it up */
+    #tReset.alert {
+      opacity: 1;
+      background: rgba(255, 107, 53, .26);
+      border-color: var(--accent);
+      color: #fff;
+      animation: resetPulse 1.4s ease-in-out infinite;
+    }
+
+    @keyframes resetPulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(255, 107, 53, .45); }
+      50%      { box-shadow: 0 0 0 13px rgba(255, 107, 53, 0); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      #tReset.alert { animation: none; }
+    }
+
     /* ---------- small screens / phones ----------
        The speedo panel is 214px wide and sat bottom-right, directly under the
        gas, brake and CAM buttons. On small screens the readouts move to the
@@ -997,6 +1028,7 @@
       #tGas   { right: 18px; bottom: 96px; }
       #tBrake { right: 18px; bottom: 18px; }
       #tCam   { right: 96px; bottom: 18px; font-size: 12px; }
+      #tReset { bottom: 18px; font-size: 23px; }
     }
 
     /* ---------- portrait guard ---------- */
@@ -1153,7 +1185,7 @@
         <div><kbd>H</kbd> Headlights</div>
         <div><kbd>N</kbd> Day / Night</div>
         <div><kbd>K</kbd> <kbd>B</kbd> Horn</div>
-        <div><kbd>R</kbd> Reset Vehicle</div>
+        <div><kbd>R</kbd> Back to Road</div>
         <div><kbd>P</kbd> <kbd>Esc</kbd> Pause</div>
         <div><kbd>M</kbd> Mute Audio</div>
         <div><kbd>Drag</kbd> Rotate Camera</div>
@@ -1231,6 +1263,7 @@
     <div class="tbtn" id="tGas">▲</div>
     <div class="tbtn" id="tBrake">▼</div>
     <div class="tbtn" id="tCam">CAM</div>
+    <div class="tbtn" id="tReset" title="Back to road">↺</div>
   </div>
 
   <div id="rotate">
@@ -3088,7 +3121,7 @@
       overturnT: 0,
       height: 0,
       surface: 'dirt',
-      lastGoodIdx: 0, lap: 0, prevT: 0, progress: 0,
+      lastGoodIdx: 0, lap: 0, prevT: 0, progress: 0, trailDist: 0, offTrailT: 0,
       dive: 0, squat: 0, bodyRoll: 0, bumpImpulse: 0,
       vibr: 0
     };
@@ -3113,7 +3146,8 @@
       for (const w of wheels) { w.comp = 0.16; w.compV = 0; }
       jeep.position.copy(V.pos);
       jeep.rotation.set(0, V.yaw, 0);
-      notify('Vehicle reset to trail');
+      V.offTrailT = 0; V.trailDist = 0;
+      notify('Back on the trail');
     }
 
     function updateVehicle(dt) {
@@ -3320,6 +3354,10 @@
       if (up.y < 0.45) { V.overturnT += dt; } else { V.overturnT = Math.max(0, V.overturnT - dt * 2); }
 
       const info = trailInfo(V.pos.x, V.pos.z);
+      V.trailDist = info.dist;
+      // strayed well clear of the driveable width -> offer recovery
+      if (info.dist > ROAD_HALF + 6.0) V.offTrailT += dt;
+      else V.offTrailT = 0;
       if (info.dist < ROAD_HALF + 1.0) {
         V.lastGoodIdx = info.i;
         const t = info.t;
@@ -3914,6 +3952,7 @@
       bindTouch('tLeft', () => touch.steer = -1, () => { if (touch.steer < 0) touch.steer = 0; });
       bindTouch('tRight', () => touch.steer = 1, () => { if (touch.steer > 0) touch.steer = 0; });
       bindTouch('tCam', () => setCameraMode(camMode + 1));
+      bindTouch('tReset', () => resetVehicle());
     }
 
     function readInput() {
@@ -3955,6 +3994,7 @@
       notice: document.getElementById('notice'),
       tip: document.getElementById('tip'),
       warn: document.getElementById('warn'),
+      tReset: document.getElementById('tReset'),
       hud: document.getElementById('hud'),
       pause: document.getElementById('pause')
     };
@@ -4001,7 +4041,9 @@
       let deg = (-V.yaw * 180 / Math.PI + 180) % 360; if (deg < 0) deg += 360;
       el.cTxt.textContent = DIRS[Math.round(deg / 45) % 8] + ' · ' + Math.round(deg) + '°';
       el.rose.style.transform = 'rotate(' + (-deg) + 'deg)';
-      el.warn.classList.toggle('show', V.overturnT > 1.4);
+      const overturned = V.overturnT > 1.4;
+      el.warn.classList.toggle('show', overturned);
+      if (el.tReset) el.tReset.classList.toggle('alert', overturned || V.offTrailT > 1.5);
     }
 
     /* =========================================================================
@@ -4186,7 +4228,10 @@
       s.style.opacity = '0';
       setTimeout(() => s.classList.add('hidden'), 820);
       el.hud.classList.add('on');
-      if (isTouch) el.tip.innerHTML = '<b>▲</b> drive · <b>◀ ▶</b> steer · <b>CAM</b> camera · drag to look';
+      if (isTouch) {
+        el.tip.innerHTML = '<b>▲</b> drive · <b>◀ ▶</b> steer · <b>CAM</b> camera · <b>↺</b> back to road';
+        el.warn.innerHTML = 'Vehicle overturned — tap <b>↺</b> to recover';
+      }
       el.tip.classList.add('show');
       setTimeout(() => el.tip.classList.remove('show'), 8000);
       notify('Chase camera');
